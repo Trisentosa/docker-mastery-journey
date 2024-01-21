@@ -33,7 +33,7 @@
   - [Container Images, Where to Find Them and How to Build Them](#container-images-where-to-find-them-and-how-to-build-them)
     - [What's in an Image (and What's isn't)](#whats-in-an-image-and-whats-isnt)
     - [Using Docker Hub Registry Images](#using-docker-hub-registry-images)
-    - [Images and their Layers: Discover the Image Cache](#images-and-their-layers-discover-the-image-cache)
+    - [Images and their Layers: Discover the Image Cache:](#images-and-their-layers-discover-the-image-cache)
     - [Image Tagging and Pushing to Docker Hub](#image-tagging-and-pushing-to-docker-hub)
     - [Building Images: The Dockerfile Basics](#building-images-the-dockerfile-basics)
     - [Building Images: Running Docker Builds](#building-images-running-docker-builds)
@@ -395,22 +395,156 @@ curl -s search:9200
 ## Container Images, Where to Find Them and How to Build Them
 
 ### What's in an Image (and What's isn't)
+- Image
+  - What is: 
+    - App binaries and dependencies
+    - Metadata about the image data and how to run the image
+    - can be as small as one file 
+    - Big as a Ubuntu distro with apt, apache, php installed
+  - What isn't:
+    - Not a complete OS. NO kernel, kernel modules (e.g. drivers), since it will run on host OS
 
 ### Using Docker Hub Registry Images
+- [Docker Hub](https://hub.docker.com)
+  - if official image, it will not have forward slash in its name
+  - e.g. just `nginx` -> https://hub.docker.com/_/nginx (not `account_name/nginx`)
+- Versioning:
+  - Using tags, usually can refer to "Supported tags" section
+  ![nginx_tags](images/examples/nginx_tags.png)
+  - multiple tags can refer to same image, same `Image ID` (e.g `1.25.3, mainline, 1, 1.25, latest, 1.25.3-bookworm, mainline-bookworm, 1-bookworm, 1.25-bookworm, bookworm`)
+  - for offical images, by default tag is `latest`
+  - in production, best to use by specific tags e.g. `11.1.9`
+  - ones like "1.25.3-perl" or "1.25.3-alpine" means that they are built on top of base perl image or alpine image
+- Official docker images: https://github.com/docker-library/official-images/tree/master/library or use "Explore" section in `Docker Hub`
 
-### Images and their Layers: Discover the Image Cache
+### Images and their Layers: Discover the Image Cache:
+- Union file systems:
+  - When pulling, you realize that there are multi-step process in pulling image
+  - ![pull_image](images/examples/pull_image.png)
+  - its because of Union file system, which is images work by making layer of the changes
+  - each layer is unique, identified by its id in SHA format. Stored only onece on a host
+  - this series of changes are defined in the `Dockerfile`
+  - For the example above, we already have some "Already exists" and "Pull Complete"
+    - "Already exists": meaning that we have that layer in cache (maybe other image in our system use the same layer already)
+    - "Pull complete": get layer we don't have yet
+  - This ensures maximum efficiency of storage and transfer time
+  - A container is just a single read/write layer on top of an image
+- Commands:
+  - `history`: get layer of changes of an image
+    - e.g. `docker history nginx:latest`
+    - ![docker_history](images/examples/docker_history.png)
+  - `inspect`
+    - e.g. `docker image inspect nginx`
+- Resource: https://docs.docker.com/storage/storagedriver/
 
 ### Image Tagging and Pushing to Docker Hub
+- Commands
+  - `tag`: assign one or more tags to an image
+- Image tag
+  - 3 things: user, repo, tag
+  - format: `<user>/<repo>:<tag>`
+  - e.g. `tri/nginx:15.0.1`
+  - official format: `<repo>:<tag>`
+- Tag is just a pointer, snippet of `docker image ls`:
+  - the image id for tag for `alpine` and `1.25.3-alpine` is the same. We're just storing one copy of this image.
+  - ![docker_tags](images/examples/docker_image_tags.png)
+
+```bash
+docker image tag nginx trisentosawisesa/nginx # need to be your docker username
+docker image ls # shows our image
+docker image push trisentosawisesa/nginx # if request denied, need to login
+docker login
+docker image push trisentosawisesa/nginx
+
+docker image tag trisentosawisesa/nginx trisentosawisesa/nginx:testing # new tagging
+docker image push trisentosawisesa/nginx:testing # push new tag, don't need to reupload (cached)
+```
+result: https://hub.docker.com/repository/docker/trisentosawisesa/nginx/general
 
 ### Building Images: The Dockerfile Basics
+- `Dockerfile`: recipe for creating an image
+  - in docker cli, sometimes can use `-f` to refer something than the default `Dockerfile`
+  - e.g. `docker build -f my-dockerfile`
+  - Examples in course repo:
+    - [sample 1](../dockerfile-sample-1/)
+    - [sample 2](../dockerfile-sample-2/)
+    - [sample 3](../dockerfile-sample-3/)
+    - [sample 4](../dockerfile-sample-4/)
+    - [sample 5](../dockerfile-sample-5/)
+  - Some basics instructions:
+    - `FROM`: the base image to pull from
+    - `ENV`: environment variables 
+    - `RUN`: run commands to building your image
+    - `EXPOSE`: expose container ports so it is able to be used
+    - `CMD`: command to run each time a container is launched or restarted
+    - `WORKDIR`: change directory (like `cd` honestly, but more descriptive and readable)
+  - Dockerfile references: https://docs.docker.com/engine/reference/builder/
 
 ### Building Images: Running Docker Builds
+```bash
+cd dockerfile-sample-1
+docker image build -t customnginx . # since use locally, tag doesnt have to use your docker ID
+# . argument just to build image from dockerfile in current directory
+docker image ls
+```
+
+- Tips:
+  - Put lines that will have more changes over time at the bottom of the dockerfile, vice versa
+  - The reason is, once a line (step) change, every other step after that will also need to be re-run
+  - for example if you have command to copy your source file that change a lot, better to keep it at the bottom of dockerfile
+
 
 ### Building Images: Extending Official Images
+```dockerfile
+# dockerfile-sample-2
+FROM nginx:latest
+
+WORKDIR /usr/share/nginx/html
+
+COPY index.html index.html
+```
+
+```bash
+cd dockerfile-sample-1
+docker image build -t nginx-with-html .
+
+# test it, go to localhost:8083/index.html
+docker container run -d --rm --name new_nginx_html -p 8083:80 nginx-with-html
+```
 
 ### Assignment: Build your Own Dockerfile and Run Containers From it
+- Assignment:
+  - Take existing node.js app and dockerize it
+  - Make `Dockerfile`, build it, test it, push it, rm it, run it
+  - Expect this to be iterative
+  - details in [dockerfile-assignment-1](../dockerfile-assignment-1/README.md)
+  - use Alpine version of the official `node` 6.x image
+  - Result is web site at 
+  - Tag and push to your Docker Hub accountr
+  - Remove your image from local cache, run again from Hub
+- Answer:
+  - my [dockerfile](../dockerfile-assignment-1/Dockerfile)
+  ```bash
+  docker image build -t trisentosawisesa/dockerfile-assignment-1 .
+
+  docker container run -d --name node-app -p 6969:3000 trisentosawisesa/dockerfile-assignment-1
+
+  docker stop node-app && docker rm node-app
+
+  docker image push trisentosawisesa/dockerfile-assignment-1
+  docker image rm trisentosawisesa/dockerfile-assignment-1
+  docker pull trisentosawisesa/dockerfile-assignment-1
+
+  docker container run -d --name node-app -p 6969:3000 trisentosawisesa/dockerfile-assignment-1
+
+  ```
 
 ### Using Prune to Keep Your Docker System Clean
+- Youtube video: https://youtu.be/_4QzP7uwtvI
+- `docker image prune` to clean up just "dangling" images
+- `docker system prune` will clean up everything you're not currently using
+- `docker image prune -a` remove all images you're not using
+- `docker system df` see space usage
 
 ## Persistent Data: Volumes
 
