@@ -43,11 +43,9 @@
   - [Persistent Data: Volumes](#persistent-data-volumes)
     - [Container Lifetime \& Persistent Data](#container-lifetime--persistent-data)
     - [Persistent Data: Data Volumes](#persistent-data-data-volumes)
-    - [Shell Differences for Path Expansion](#shell-differences-for-path-expansion)
     - [Persistent Data: Bind Mounting](#persistent-data-bind-mounting)
     - [Database Passwords in Containers](#database-passwords-in-containers)
     - [Assignment: Database Upgrades with Named Volumes](#assignment-database-upgrades-with-named-volumes)
-    - [File Permissions Across Multiple Containers](#file-permissions-across-multiple-containers)
     - [Assignment: Edit Code Running in Containers with Bind Mounts](#assignment-edit-code-running-in-containers-with-bind-mounts)
   - [Making it Easier with Docker Compose: The Multi-Container Tool](#making-it-easier-with-docker-compose-the-multi-container-tool)
     - [Docker Compose and The `docker-compose.yml` file](#docker-compose-and-the-docker-composeyml-file)
@@ -418,7 +416,7 @@ curl -s search:9200
 - Official docker images: https://github.com/docker-library/official-images/tree/master/library or use "Explore" section in `Docker Hub`
 
 ### Images and their Layers: Discover the Image Cache:
-- Union file systems:
+- Union File Systems (UFS):
   - When pulling, you realize that there are multi-step process in pulling image
   - ![pull_image](images/examples/pull_image.png)
   - its because of Union file system, which is images work by making layer of the changes
@@ -549,24 +547,134 @@ docker container run -d --rm --name new_nginx_html -p 8083:80 nginx-with-html
 ## Persistent Data: Volumes
 
 ### Container Lifetime & Persistent Data
+- Problem of persistent data:
+  - containers are **usually** immutable and ephemeral
+  - "immutable infrastructure": only re-deploy containers, never change
+  - What about databases, or unique data? 
+    - shouldn't contain unique data contain with application binaries
+    - also called "separation of concerns"
+  - This is known as "persistent data"
+  - 2 ways: `Volumes` and  `Bind Mounts`
+    - Volumes: make special location outside of container UFS
+    - Bind Mounts: link container path to host path
 
 ### Persistent Data: Data Volumes
+- First, a tip is to look for `Dockerfile` from official images for best practice
+- This lecture, take a look at [mysql](https://github.com/docker-library/mysql/blob/ffa6423ca24168e4d96631b5e8f536ac826d2a5b/innovation/Dockerfile.oracle)
+- Most databases Dockerfile likely use `VOLUME`, can be seen above in this line:
+  - `VOLUME /var/lib/mysql`
+- What this means, is that it tells Docker Daemon to create `Volume` location at this directory 
+- `Volume` will outlive container and require manual removal to cleanup
+- To check how it works:
+  - ```bash
+    docker container run -d --name mysql --publish 3306:3306 --env MYSQL_RANDOM_ROOT_PASSWORD=yes mysql # run mysql container
 
-### Shell Differences for Path Expansion
+    docker inspect mysql # look for Volumes and Mount directives
+    docker volume ls
+    docker volume inspect 8350 # volume id
+
+    docker stop mysql 
+    docker volume ls #volume is still there
+    ```
+  - Volume directive
+    - ![volume_volume](images/examples/volume_volume_directive.png)
+  - Mount directive
+    - ![volume_mounts](images/examples/volume_mounts_directive.png)
+  - basically it will mount the volume directory in host directory
+- `named volumes`: name your volume, easier to reuse and share between containers (`-v` option)
+  ```bash
+  docker container run -d --name new_mysql --publish 3306:3306 --env MYSQL_RANDOM_ROOT_PASSWORD=yes -v mysql-db:/var/lib/mysql mysql # run mysql container
+
+  docker volume ls
+  docker inspect new_mysql
+
+  docker container run -d --name new_mysql2 --publish 3306:3306 --env MYSQL_RANDOM_ROOT_PASSWORD=yes -v mysql-db:/var/lib/mysql mysql # run another mysql using the same volume
+  ```
+- create volume
+  ```bash
+  docker volume create 
+  ```
 
 ### Persistent Data: Bind Mounting
+- Maps a host file or directory to a container file or directory
+- Skips UFS, and host files overwrite any in container
+- Can't use in Dockerfile, must be at `container run`
+- Format:
+  - ... run -v /Users/tri/struff:/path/container 
+  - knows it host filesystem if it starts with forward slash (`/Users/...`)
+```bash
+cd ../dockerfile-sample-2
+docker container run -d --name nginx -p 8888:80 -v $(pwd):/usr/share/nginx/html nginx
+
+# check your localhost:8888/index.html
+vim index.html # change content of it
+docker container exec -it nginx bash 
+```
+
+```bash
+#inside nginx container
+cat /usr/share/nginx/html/ # should reflect the changes too
+```
 
 ### Database Passwords in Containers
+- for `postgres`, env variable is needed to be defined when run
+  - `POSTGRES_PASSWORD=mypasswd`
+  - OR `POSTGRES_HOST_AUTH_METHOD=trust`
 
 ### Assignment: Database Upgrades with Named Volumes
+- Assignment:
+  - Database upgrade with containers
+  - Create a `postgres` container with named volume psql-data using version `15.1`
+  - use Docker Hub to learn `VOLUME` path and versions needed to run it
+  - Check logs, stop container
+  - Create a new `postgres` container with same named volume using `15.2` 
+  - Check logs to validate
+- Answer:
+  - Postgres [Dockerfile](https://github.com/docker-library/postgres/blob/ef45b990868d5a0053bd30fdbae36551b46b76c9/15/bullseye/Dockerfile)
+    - volume: `VOLUME /var/lib/postgresql/data`
+```bash
+# create volume
+docker volume create psql-db
 
-### File Permissions Across Multiple Containers
+# pull images
+docker pull postgres:15.1 && docker pull postgres 15.2
+
+# starts container
+docker container run -d --name old_postgres -v psql-db:/var/lib/postgresql/data --env POSTGRES_PASSWORD=mypasswd postgres:15.1
+docker container run -d --name new_postgres -v psql-db:/var/lib/postgresql/data --env POSTGRES_PASSWORD=mypasswd postgres:15.2
+
+# see logs to validate
+docker container logs old_postgres
+docker container logs new_postgres
+```
 
 ### Assignment: Edit Code Running in Containers with Bind Mounts
+- Assignment: 
+  - Use a Jekyl "Static Site Generator" to start a local web server
+  - source code is at [bindmount-sample-1](../bindmount-sample-1/)
+  - We edit files with editor on our host using native tools
+  - Container detect changes with host files and updates web server
+  - start container with `docker run -p 88:4000 -v $(pwd):/bretfisher/jekyll-serve`
+  - refresh browser to see change
+  - change the file in `_posts\` and refresh browser to see changes 
+- Answer:
+```bash
+# move to right jekyll directory
+cd bindmount-sample-1
+
+# start container with image provided
+docker run -p 4000:4000 -v $(pwd):/site bretfisher/jekyll-serve
+
+# change some files
+vim _posts/2020-07-21-welcome-to-jekyll.markdown
+
+# reflect some changes, success !!
+```
 
 ## Making it Easier with Docker Compose: The Multi-Container Tool
 
 ### Docker Compose and The `docker-compose.yml` file
+- Why: configure relationships between containers
 
 ### Compose V2
 
