@@ -51,7 +51,6 @@
     - [Docker Compose and The `docker-compose.yml` file](#docker-compose-and-the-docker-composeyml-file)
     - [Compose V2](#compose-v2)
     - [Trying Out Basic Compose Commands](#trying-out-basic-compose-commands)
-    - [Version Dependencies in Multi-Tier Apps](#version-dependencies-in-multi-tier-apps)
     - [Assignment: Compose-Assignment-1](#assignment-compose-assignment-1)
     - [Adding Image Building to Compose Files](#adding-image-building-to-compose-files)
     - [Assignment: Compose-Assignment-2](#assignment-compose-assignment-2)
@@ -674,16 +673,71 @@ vim _posts/2020-07-21-welcome-to-jekyll.markdown
 ## Making it Easier with Docker Compose: The Multi-Container Tool
 
 ### Docker Compose and The `docker-compose.yml` file
-- Why: configure relationships between containers
+- Why: 
+  - configure relationships between containers
+  - save our docker container run settings in easy-to-read file
+- `docker-compose.yml`
+  - YAML format has it's own versions: 1, 2, 2.1, 3, 3.1
+  - YAML file can be used with `docker-compose` command for local docker automation
+  - default is `docker-compose.yml`, if other name can use the `-f <custom-compose-yml-file.yml>`
+- Example: 
+  - Basics directives: [compose sample 1](../compose-sample-1/)
+  - the `docker-compose.yml` gives example how to do the jekyll assignment from previous assignment in compose file
 
 ### Compose V2
 
 ### Trying Out Basic Compose Commands
-
-### Version Dependencies in Multi-Tier Apps
+- Not production grade tool, ideal for local dev
+- Commands
+  - `docker compose up` : setup volumes, networks, containers, etc
+  - `docker compose down` : stop all containers and remove cont/vol/net
+    - `-v` to `down` to also remove the volumes
+- Example: 
+  - open [compose sample 1](../compose-sample-2/)
+  - what it does:
+    - create 2 services proxy(`nginx`) and web(`httpd`)
+    - the proxy will map port 80:80 (`ports` directive)
+    - the proxy will use bindmount to get its configuration (`volumes` directive) of
+      - `./nginx.conf:/etc/nginx/conf.d/default.conf:ro`
+      - the `ro` here means read only
+  ```bash
+  docker compose up # use -d to run in background
+  docker compose ps
+  docker compose top
+  docker compose down
+  docker compose --help
+  ```
 
 ### Assignment: Compose-Assignment-1
+- Assignment:
+  - Source code: [compose-assignment-1](../compose-assignment-1/)
+  - Build a basic compose file for a Drupal content management system website. Docker Hub is your friend
+  - Use the `drupal` image along with the `postgres` image
+  - Use `ports` to expose Drupal on 8080 so you can use `localhost:8080`
+  - Be sure to set `POSTGRES_PASSWORD` for postgres
+  - Walk through Drupal setup via browser
+  - **Tip**: Drupal assumes DB is `localhost`, but it's service name
+  - **Extra Credit**: use volumes to store Drupal unique data
+- Answer:
+  - My answer [here](../compose-assignment-1/tri/docker-compose.yml) 
 
 ### Adding Image Building to Compose Files
+- Using Compose to Build
+  - Compose can build custom images
+  - Will build with `docker compose up` if not found in cache
+  - Also rebuild with `docker compose build`
+  - Great for complex builds that have lots of vars or build args
+- Example: [compose-sample-3](../compose-sample-3/)
+  - can use `build` directive
+  - it will first check image from cache, if not exist it will read from the file specified in `dockerfile` directive inside `build` directive
+  - When we add a `build` + `image` value to a compose service, it knows to use the image name to write to in our image cache, rather then pull from Docker Hub.
+- **Tips**: use `docker compose down --rmi local`: delete also the locally built image 
 
 ### Assignment: Compose-Assignment-2
+- Assignment:
+  - Building custom `drupal` image for local testing
+  - Start with compose file from previous assignment
+  - Make `Dockerfile` and `docker-compose.yml` from [compose-assignment-2](../compose-assignment-2/)
+  - Use `README.MD` for the details
+- Anser:
+  - My answer: [docker-compose.yml](../compose-assignment-2/docker-compose.yml) and [Dockerfile](../compose-assignment-2/Dockerfile)

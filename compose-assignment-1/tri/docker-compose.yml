@@ -1,0 +1,15 @@
+services:
+  webserver:
+    image: drupal
+    ports: 
+      - '8080:80'
+    volumes:
+      - /var/www/html/modules
+      - /var/www/html/profiles
+      - /var/www/html/themes
+  db:
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: postgres
+  
