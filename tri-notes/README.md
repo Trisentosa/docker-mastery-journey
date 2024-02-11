@@ -54,6 +54,24 @@
     - [Assignment: Compose-Assignment-1](#assignment-compose-assignment-1)
     - [Adding Image Building to Compose Files](#adding-image-building-to-compose-files)
     - [Assignment: Compose-Assignment-2](#assignment-compose-assignment-2)
+  - [Swarm Intro](#swarm-intro)
+    - [Swarm mode: Built-in orchestration](#swarm-mode-built-in-orchestration)
+    - [Create your First Service and Scale it Locally](#create-your-first-service-and-scale-it-locally)
+    - [Creating a 3-Node Swarm Cluster](#creating-a-3-node-swarm-cluster)
+  - [Swarm Basic Features and How to use](#swarm-basic-features-and-how-to-use)
+    - [Section Requirements:](#section-requirements)
+    - [Scaling Out with Overlay Networking](#scaling-out-with-overlay-networking)
+    - [Scaling Out with Routing Mesh](#scaling-out-with-routing-mesh)
+    - [Docker Swarm Networking](#docker-swarm-networking)
+    - [Assignment: Create a Multi-Service Multi-Node Web App](#assignment-create-a-multi-service-multi-node-web-app)
+    - [Swarm Stacks and Production Grade Compose](#swarm-stacks-and-production-grade-compose)
+    - [Secrets Storage for Swarm: Protecting your Environemtn Variables](#secrets-storage-for-swarm-protecting-your-environemtn-variables)
+    - [Using Secrets in Swarm Services](#using-secrets-in-swarm-services)
+    - [Using Secrets with Swarm Stacks](#using-secrets-with-swarm-stacks)
+    - [Assignments:](#assignments)
+  - [Swarm App Lifecycle](#swarm-app-lifecycle)
+  - [Container Registires: Image Storage and Distribution](#container-registires-image-storage-and-distribution)
+  - [Docker in Production](#docker-in-production)
 
 # Course
 - https://www.udemy.com/course/docker-mastery
@@ -741,3 +759,157 @@ vim _posts/2020-07-21-welcome-to-jekyll.markdown
   - Use `README.MD` for the details
 - Anser:
   - My answer: [docker-compose.yml](../compose-assignment-2/docker-compose.yml) and [Dockerfile](../compose-assignment-2/Dockerfile)
+
+## Swarm Intro
+### Swarm mode: Built-in orchestration
+- With "Containers Everywhere = New Problems", some questions to consider with containers:
+  - How do we automate container lifecycle?
+  - How can we easily scale out/in/up/down?
+  - How can we ensure our containers are re-created if they fail?
+  - How can we replace containers without downtime (blue/green deploy)?
+  - How can we control/track where containers get started?
+  - How can we create cross-node virtual networks?
+  - How can we ensure only trusted servers run our containers?
+  - How can we store secrets, keys, passwords and get them to the right container (and only that container)?
+- `Swarm Mode`: clustering solution built inside Docker
+- Not enabled by default, new commands once enabled:
+  - `docker swarm`
+  - `docker node`
+  - `docker service`
+  - `docker stack`
+  - `docker secret`
+- Resources:
+  - [Docker Swarm Deep Dive Part 1: Topology](https://www.youtube.com/watch?v=dooPhkXT9yI)
+  - [Docker Swarm Deep Dive Part 2: Orchestration](https://youtube.com/watch?v=_F6PSP-qhdA)
+  - [Heart of the Swarmkit: Topology Management](https://speakerdeck.com/aluzzardi/heart-of-the-swarmkit-topology-management)
+  - [Heart of Swarmkit: Store, Topology, Object Model](https://www.youtube.com/watch?v=EmePhjGnCXY)
+  - [Raft visualization](https://thesecretlivesofdata.com/raft/)
+  - [Docker Swarm commands](./resources/DM+S07+Commands.txt)
+  - [Swarm Intro slides](./resources/S07+Swarm+Intro+Slides.pdf)
+
+### Create your First Service and Scale it Locally
+- `docker swarm`: creating, leave, unlock swarm, manage tokens, etc
+  ```bash
+  docker swarm --help
+  docker swarm init
+  ```
+  ![docker_swarm_init](./images/examples/docker_swarm_init.png)
+  - What happened
+    - PKI(Public Key Infrastructure) and security automation
+      - Root signing certificate created for our Swarm
+      - Certificate is issued for first Manager node
+      - Join tokens are crated
+    - Raft database created to store root CA(Certification Authority), configs and secrets
+      - Encrypted by default on disk 
+      - No need for another key/value system to hold orchestration/secrets
+      - Replicates logs amongst managers via mutual TLS in "control plane"
+- `docker node`: managing swarm nodes (promote, demote, etc)
+  ```bash
+  docker node --help
+  docker node ls
+  ```
+- `docker service`: in swarm, replacing `docker run`(`run` is single host solution)
+  ```bash
+  docker service --help
+  docker service create alpine ping 8.8.8.8 # returns service id: r0fsoxrm6v5421fd29fly0fqd
+  docker service ls # list services, should see the alpine that just created, in my case the name is "stupefied_goldwasser"
+  docker service ps stupefied_goldwasser
+  docker container ls
+  docker service update r0fsoxrm6v54 --replicas 3 # increase replicas
+
+  docker container rm stupefied_goldwasser.3.xw6pkpyzqdcsubi5t02vb3i2o
+  docker service ls # replica shows 3/3
+  docker container ls | grep stupefied # see that new container is generated
+  docker service ps stupefied_goldwasser # see history of containers
+
+  docker service rm stupefied_goldwasser # remove service
+  docker service ls # service is removed
+  docker container ls # containers removed (not immediately)
+  ```
+![swarm_update_replica](./images/examples/swarm_update_replica.png)
+![swarm_remove_service](./images/examples/swarm_remove_service.png)
+- `docker update`: update configuration of one or more containers
+  - e.g. increase resources (cpu, mem)
+  ```bash
+  docker update --help
+  docker service update --help # support updating options that ensures availability (e.g. using blue green pattern)
+  docker container rm -f <>
+  ```
+- Resources:
+  - [Deploy Service to a swarm](https://docs.docker.com/engine/swarm/services/)
+
+### Creating a 3-Node Swarm Cluster
+- Host Options
+  1. [play-with-docker.com](https://labs.play-with-docker.com/)
+  2. ~~docker-machine~~ (deprecated) + VirtualBox 
+  3. Digital Ocean + Docker install
+     1. Like a production setup, cost monthly while learning
+  4. Cutomize your own
+     1. Install docker anywhere with `get.docker.com`
+     2. docker-machine can provisiion machines for Amazon, Azure, Google, etc
+  5. [Multipass](https://multipass.run/)
+- Me: using GCP compute engine
+  - Create 3 node of GCP compute engine
+  - Follow instruction from https://get.docker.com to install docker inside each VM (I create 1 node first with docker already setup then create image out of it, so other nodes can just use that image)
+  - Swarm setup:
+  ```bash
+  # in node 1
+  docker swarm init # create swarm, it will return the join swarm for other nodes
+  docker node ls # shows other joined nodes of the other nodes that join this swarm
+
+  docker swarm join-token manager # get join token of manager, use this for node 3 so it can join as manager
+  docker node update --role manager swarm-node-2.asia-southeast2-c.c.oval-bazaar-413912.internal # add node 2 as manager
+
+  docker service create --replicas 3 alpine ping 8.8.8.8 # create the service, set 3 replicas 
+  docker service ls # check the service
+  docker node ls # check running nodes
+  ```
+
+  ```bash
+  # in node 2
+  docker swarm join --token SWMTKN-1-132hgmkuxb2rweufayh0hfejys87bf7t5gk0z1bvgtn0gc57t1-2unyftp4bu2tl4us5dzscnjvd 10.184.0.3:2377
+  docker node ls # fail because worker don't have authroity, go back to node and node 2 as manager
+  docker container ls
+  ```
+
+  ```bash
+  # in node 3
+  docker swarm join --token SWMTKN-1-132hgmkuxb2rweufayh0hfejys87bf7t5gk0z1bvgtn0gc57t1-bjg4ayenx9vr7q7qh57fhmnu4 10.184.0.3:2377 # immediately join as manager
+  docker container ls
+  ```
+![swarm_cluster_gcp](./images/examples/swarm_cluster_gcp.png)
+![swarm_cluster_output](./images/examples/swarm_cluster_output.png)
+
+
+## Swarm Basic Features and How to use
+
+### Section Requirements:
+```
+drupal:9
+postgres:14
+```
+
+### Scaling Out with Overlay Networking
+
+### Scaling Out with Routing Mesh
+
+### Docker Swarm Networking
+
+### Assignment: Create a Multi-Service Multi-Node Web App
+
+### Swarm Stacks and Production Grade Compose
+
+### Secrets Storage for Swarm: Protecting your Environemtn Variables
+
+### Using Secrets in Swarm Services
+
+### Using Secrets with Swarm Stacks
+
+### Assignments: 
+
+
+## Swarm App Lifecycle
+
+## Container Registires: Image Storage and Distribution
+
+## Docker in Production
