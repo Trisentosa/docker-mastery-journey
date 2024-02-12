@@ -62,7 +62,6 @@
     - [Section Requirements:](#section-requirements)
     - [Scaling Out with Overlay Networking](#scaling-out-with-overlay-networking)
     - [Scaling Out with Routing Mesh](#scaling-out-with-routing-mesh)
-    - [Docker Swarm Networking](#docker-swarm-networking)
     - [Assignment: Create a Multi-Service Multi-Node Web App](#assignment-create-a-multi-service-multi-node-web-app)
     - [Swarm Stacks and Production Grade Compose](#swarm-stacks-and-production-grade-compose)
     - [Secrets Storage for Swarm: Protecting your Environemtn Variables](#secrets-storage-for-swarm-protecting-your-environemtn-variables)
@@ -867,14 +866,14 @@ vim _posts/2020-07-21-welcome-to-jekyll.markdown
 
   ```bash
   # in node 2
-  docker swarm join --token SWMTKN-1-132hgmkuxb2rweufayh0hfejys87bf7t5gk0z1bvgtn0gc57t1-2unyftp4bu2tl4us5dzscnjvd 10.184.0.3:2377
+  docker swarm join --token <swarm-token>
   docker node ls # fail because worker don't have authroity, go back to node and node 2 as manager
   docker container ls
   ```
 
   ```bash
   # in node 3
-  docker swarm join --token SWMTKN-1-132hgmkuxb2rweufayh0hfejys87bf7t5gk0z1bvgtn0gc57t1-bjg4ayenx9vr7q7qh57fhmnu4 10.184.0.3:2377 # immediately join as manager
+  docker swarm join --token <swarm-token> # immediately join as manager
   docker container ls
   ```
 ![swarm_cluster_gcp](./images/examples/swarm_cluster_gcp.png)
@@ -890,14 +889,69 @@ postgres:14
 ```
 
 ### Scaling Out with Overlay Networking
+- Overlay Multi-Host Networking
+  - `--driver overlay` when creating network
+    - creating swarm wide bridge network
+    - containers cross-host on the same virtual network can access each other
+  - For container-to-container traffic inside a single Swarm
+  - Optional IPSec(AES) encryption on network creation
+  - Each service can be connected to multiple networks (e.g. front-end, back-end)
+- Example: in `swarm-node-1`
+  ```bash
+  docker network create --driver overlay mydrupal
+  docker service create --name psql --network mydrupal -e POSTGRES_PASSWORD=mypass postgres # create postgre service
+  docker service create --name drupal --network mydrupal -p 80:80 drupal # create drupal service
+  watch docker service ls
+  
+  docker service ps drupal # in swarm-node-2
+  docker service ps psql # in swarm-node-1
+  ```
+- Go to your drupal node ip (swarm-node-2), and should direct to drupal setup. setup the website
+- But now try to access other nodes in that cluster, you should be able to access the same website from other nodes in the swarm. Try to investigate why that is the case (answer is in section below)
+  ```bash
+  docker network ls
+  docker service inspect drupal
+  ```
 
 ### Scaling Out with Routing Mesh
-
-### Docker Swarm Networking
+- The reason for question from previous section 
+  - why are we able to access drupal service hosted on one node on another node of the same cluster ?
+  - answer: routing mesh, what is it?
+- Routing Mesh
+  - Routes ingress (incoming) packets for a Service to proper task
+  - Spans all nodes in Swarm
+  - Uses [IPVS(IP Virutal Sever)](https://en.wikipedia.org/wiki/IP_Virtual_Server) from Linux Kernel
+  - Load balances Swarm Services across their Tasks
+  - Two ways this works:
+    - container-to-container in a Overlay network (uses VIP/Virtual IP)
+      - frontend don't directly communicate with backend server, instead it uses VIP(Virtual IP) that represents the swarm as a whole. Using this, swarm can ensures load distributed evenly (like a load balancer)
+    - external traffic incoming to published ports (all nodes listen)
+      - any incoming traffic to your swarm, can choose any nodes in your swarm. Each node will have the published ports open, so that even if the service is not in that node, it will reroute that traffic to container based on load balancing
+  - Basically, it is created so we don't need to care which node have which service
+  ![swarm_routing_mesh](./images/examples/swarm_routing_mesh.webp)
+  - See it in action
+    ```bash
+    # go to any of the node in your swarm
+    docker service create --name search --replicas 3 -p 9200:9200 elasticsearch:2 # create 3 replicas of elastic search service
+    curl localhost:9200 # see that it returns different result, that is the load balancer working in the background
+    ```
+  - Routing Mesh Cont.
+    - stateless load balancing [explain](https://medium.com/@gilbertomrf01/load-balance-stateless-vs-stateful-372d4db80444)
+    - Load Balancing operates at layer 3 (IP and port), not layer 4 (DNS layer)
+    - Limitations can be overcome with:
+      - `Nginx` ([read](https://medium.com/@navneetsingh_95791/understanding-layer-4-and-layer-7-load-balancing-in-nginx-1050221b3737#:~:text=The%20world%20of%20load%20balancing,realms%20of%20visibility%20and%20control.)) or `HAProxy` LB proxy, or
+      - Docker Enterprise Edition, which comes with built-in L4 web proxy
 
 ### Assignment: Create a Multi-Service Multi-Node Web App
+- Assignment details [here](../swarm-app-1/)
+- 
 
 ### Swarm Stacks and Production Grade Compose
+- Stacks:
+  - Compose for Swarm
+  - Accept commpose files as declarative definition for services, networks, and volumes
+- `docker stack deploy` rather than `docker service create`
+- New `deploy:` key in compose file. Can't do `build:`
 
 ### Secrets Storage for Swarm: Protecting your Environemtn Variables
 
